@@ -6,6 +6,7 @@ DistilBERT — on the BBC News corpus (5 categories).
 """
 
 import numpy as np
+import torch
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine
@@ -16,7 +17,10 @@ def build_tfidf(texts):
 
     Returns (tfidf_matrix, vectorizer).
     """
-    pass
+    vectorizer = TfidfVectorizer()
+    tfidf_matrix = vectorizer.fit_transform(texts)
+
+    return tfidf_matrix, vectorizer
 
 
 def compute_tfidf_similarity(tfidf_matrix):
@@ -24,7 +28,8 @@ def compute_tfidf_similarity(tfidf_matrix):
 
     Returns a numpy array of shape (n, n).
     """
-    pass
+    similarity_matrix = sklearn_cosine(tfidf_matrix)
+    return similarity_matrix
 
 
 def load_glove(filepath):
@@ -32,7 +37,16 @@ def load_glove(filepath):
 
     Returns a dict mapping each word to a numpy array.
     """
-    pass
+    embeddings = {}
+
+    with open(filepath, "r", encoding="utf-8") as f:
+        for line in f:
+            values = line.strip().split()
+            word = values[0]
+            vector = np.array(values[1:], dtype=float)
+            embeddings[word] = vector
+
+    return embeddings
 
 
 def text_to_glove(text, embeddings):
@@ -41,7 +55,17 @@ def text_to_glove(text, embeddings):
     Skip out-of-vocabulary words. If every word is OOV, return a zero
     vector of shape (50,).
     """
-    pass
+    words = text.lower().split()
+
+    vectors = []
+    for w in words:
+       if w in embeddings:
+          vectors.append(embeddings[w])
+
+    if len(vectors) == 0:
+       return np.zeros(50)
+
+    return np.mean(vectors, axis=0)
 
 
 def extract_bert_embedding(text, tokenizer, model):
@@ -49,7 +73,24 @@ def extract_bert_embedding(text, tokenizer, model):
 
     Returns a numpy array of shape (768,).
     """
-    pass
+    inputs = tokenizer(
+       text,
+       return_tensors="pt",
+       truncation=True,
+       max_length=512
+    )
+
+    with torch.no_grad():
+        outputs = model(**inputs)
+
+    hidden = outputs.last_hidden_state
+    mask = inputs["attention_mask"]
+
+    mask = mask.unsqueeze(-1).expand(hidden.size()).float()
+
+    pooled = torch.sum(hidden * mask, dim=1) / torch.clamp(mask.sum(dim=1), min=1e-9)
+
+    return pooled.squeeze().numpy()
 
 
 def compare_similarities(texts, queries, tfidf_sim, glove_embeddings,
@@ -63,7 +104,47 @@ def compare_similarities(texts, queries, tfidf_sim, glove_embeddings,
                       "glove": [(text, score), ...],
                       "bert":  [(text, score), ...]}}
     """
-    pass
+    pasresults = {}
+
+    for q in queries:
+        q_result = {}
+
+        idx = texts.index(q)
+        tfidf_scores = tfidf_sim[idx]
+
+        tfidf_top = sorted(
+            [(texts[i], tfidf_scores[i]) for i in range(len(texts)) if i != idx],
+            key=lambda x: x[1],
+            reverse=True
+        )[:3]
+
+        q_result["tfidf"] = tfidf_top
+
+        q_vec = text_to_glove(q, glove_embeddings)
+
+        glove_scores = []
+        for t in texts:
+            t_vec = text_to_glove(t, glove_embeddings)
+            score = sklearn_cosine([q_vec], [t_vec])[0][0]
+            glove_scores.append((t, score))
+
+        glove_scores.sort(key=lambda x: x[1], reverse=True)
+        q_result["glove"] = glove_scores[:3]
+
+        q_vec = extract_bert_embedding(q, bert_tokenizer, bert_model)
+
+        bert_scores = []
+        for t in texts:
+            t_vec = extract_bert_embedding(t, bert_tokenizer, bert_model)
+            score = sklearn_cosine([q_vec], [t_vec])[0][0]
+            bert_scores.append((t, score))
+
+        bert_scores.sort(key=lambda x: x[1], reverse=True)
+        q_result["bert"] = bert_scores[:3]
+
+        results[q] = q_result
+
+    return resultss
 
 
 if __name__ == "__main__":
