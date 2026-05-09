@@ -145,7 +145,7 @@ def compare_similarities(texts, queries, tfidf_sim, glove_embeddings,
 
         results[q] = q_result
 
-    return resultss
+    return results
 
 
 if __name__ == "__main__":
