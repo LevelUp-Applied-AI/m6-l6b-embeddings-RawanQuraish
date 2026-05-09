@@ -105,6 +105,7 @@ def compare_similarities(texts, queries, tfidf_sim, glove_embeddings,
                       "bert":  [(text, score), ...]}}
     """
     pasresults = {}
+    results = {}
 
     for q in queries:
         q_result = {}
